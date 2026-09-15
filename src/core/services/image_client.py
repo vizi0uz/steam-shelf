@@ -69,6 +69,15 @@ class SteamImageClient:
         if progress_callback:
             progress_callback("Image download complete", 1.0)
     
+    def download_slot(self, game_id: int, img_type: str, file_id: int) -> None:
+        """Download a single artwork slot into the configured save path.
+
+        Public entry point for callers that fill slots one at a time, such as
+        ArtworkProvider falling back here after SteamGridDB comes up empty.
+        """
+        self.save_path.mkdir(parents=True, exist_ok=True)
+        self._download_and_save_image(game_id, img_type, file_id, self.save_path)
+
     def _download_and_save_image(self, game_id: int, img_type: str, file_id: int, save_path: Path) -> None:
         """Download a single image and save it.
         

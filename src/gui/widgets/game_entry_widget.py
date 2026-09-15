@@ -1,7 +1,14 @@
 import tkinter as tk
 import threading
-from tkinter import filedialog
+from pathlib import Path
+from tkinter import filedialog, ttk
+
+from core.services.steam_search import SteamAppSearch
+from core.utils.shortcut_utils import generate_shortcut_appid
 from gui.utils.icon_extractor import IconExtractor
+
+# Shared across every entry so the widgets reuse one HTTP connection pool.
+_SEARCH = SteamAppSearch()
 
 
 class GameEntryWidget:
@@ -62,16 +69,188 @@ class GameEntryWidget:
         self._create_icon(icon_frame)
         
         # Game name
-        name_label = tk.Label(header_frame, text=f"Game: {self.game_data.get('name', 'Unknown')}", 
+        self.name_label = tk.Label(header_frame, text=self._header_text(),
                              font=("Arial", 10, "bold"),
                              bg='#404040', fg='white',
                              anchor='w')
-        name_label.pack(side='left', fill=tk.X, expand=True, padx=(5, 0))
-        
+        self.name_label.pack(side='left', fill=tk.X, expand=True, padx=(5, 0))
+
+        # Steam identification section
+        self._create_match_section(game_frame)
+
         # Executable path section
         self._create_path_section(game_frame)
-        
+
         return game_frame
+
+    def _header_text(self) -> str:
+        """Header line: the name the shortcut will carry, and its folder."""
+        candidate = self.game_data.get('candidate')
+        name = self.game_data.get('name', 'Unknown')
+        folder = getattr(candidate, 'folder_name', '') if candidate else ''
+        if folder and folder != name:
+            return f"{name}   (folder: {folder})"
+        return name
+
+    def _create_match_section(self, parent):
+        """Show which Steam game this was identified as, and let it be changed.
+
+        An unconfirmed guess is never applied silently. The folder keeps its own
+        name until the user picks a match, which is what makes this work without
+        renaming anything on disk.
+        """
+        candidate = self.game_data.get('candidate')
+        if candidate is None:
+            return
+
+        match_frame = tk.Frame(parent, bg='#404040')
+        match_frame.pack(fill=tk.X, padx=10, pady=(4, 0))
+
+        self.match_status = tk.Label(match_frame, text=self._match_status_text(),
+                                     font=("Arial", 9),
+                                     bg='#404040',
+                                     fg=self._match_status_colour(),
+                                     anchor='w')
+        self.match_status.pack(anchor='w')
+
+        picker_frame = tk.Frame(match_frame, bg='#404040')
+        picker_frame.pack(fill=tk.X, pady=2)
+
+        self.match_var = tk.StringVar(value=self._current_match_label())
+        self.match_combo = ttk.Combobox(picker_frame, textvariable=self.match_var,
+                                        values=self._match_labels(), state='readonly')
+        self.match_combo.pack(side='left', fill=tk.X, expand=True, padx=(0, 5))
+        self.match_combo.bind('<<ComboboxSelected>>', self._on_match_selected)
+
+        search_btn = tk.Button(picker_frame, text="Search Steam",
+                               command=self._search_steam,
+                               font=("Arial", 8),
+                               bg='#606060', fg='white',
+                               activebackground='#707070')
+        search_btn.pack(side='right')
+
+    def _match_labels(self):
+        """Combobox entries: every alternative, plus keeping the folder name."""
+        candidate = self.game_data.get('candidate')
+        labels = [f"{m.name}  [{m.appid}]" for m in (candidate.matches if candidate else ())]
+        labels.append(self._no_match_label())
+        return labels
+
+    def _no_match_label(self):
+        candidate = self.game_data.get('candidate')
+        folder = getattr(candidate, 'folder_name', '') or self.game_data.get('name', '')
+        return f"(not on Steam - keep \"{folder}\")"
+
+    def _current_match_label(self):
+        candidate = self.game_data.get('candidate')
+        if not candidate or candidate.steam_id is None:
+            return self._no_match_label()
+        for m in candidate.matches:
+            if m.appid == candidate.steam_id:
+                return f"{m.name}  [{m.appid}]"
+        return self._no_match_label()
+
+    def _match_status_text(self):
+        candidate = self.game_data.get('candidate')
+        if not candidate or candidate.steam_id is None:
+            return "Steam match: none - artwork will be searched by name"
+        if candidate.confirmed:
+            return "Steam match: confirmed"
+        return "Steam match: uncertain - check the pick below"
+
+    def _match_status_colour(self):
+        candidate = self.game_data.get('candidate')
+        if not candidate or candidate.steam_id is None:
+            return 'gray'
+        return 'lightgreen' if candidate.confirmed else 'orange'
+
+    def _on_match_selected(self, _event=None):
+        """Apply the match the user chose to the shortcut and its artwork."""
+        candidate = self.game_data.get('candidate')
+        if candidate is None:
+            return
+
+        label = self.match_var.get()
+        chosen = next(
+            (m for m in candidate.matches if f"{m.name}  [{m.appid}]" == label), None
+        )
+
+        if chosen is None:
+            name = getattr(candidate, 'folder_name', '') or self.game_data.get('name', '')
+            self._apply_match(steam_id=None, name=name, confirmed=False)
+        else:
+            self._apply_match(steam_id=chosen.appid, name=chosen.name, confirmed=True)
+
+    def _apply_match(self, steam_id, name, confirmed):
+        """Rewrite the candidate, the shortcut name and the generated app ID.
+
+        The shortcut app ID is derived from the name and the executable, so it
+        has to be recomputed whenever the name changes -- otherwise the artwork
+        would be written under an ID Steam no longer looks for.
+        """
+        candidate = self.game_data['candidate']
+        exe = self.path_var.get() or str(candidate.exe_path)
+        shortcut_id = generate_shortcut_appid(name, exe)
+
+        self.game_data['candidate'] = candidate._replace(
+            steam_id=steam_id,
+            name=name,
+            shortcut_id=shortcut_id,
+            confirmed=confirmed,
+        )
+        self.game_data['name'] = name
+
+        game_object = self.game_data.get('game_object')
+        if game_object is not None:
+            game_object.AppName = name
+            game_object.appid = shortcut_id
+
+        self.name_label.configure(text=self._header_text())
+        self.match_status.configure(
+            text=self._match_status_text(), fg=self._match_status_colour()
+        )
+
+    def _search_steam(self):
+        """Ask for a different name and look it up on Steam."""
+        from tkinter import simpledialog
+
+        candidate = self.game_data.get('candidate')
+        if candidate is None:
+            return
+
+        term = simpledialog.askstring(
+            "Search Steam",
+            "Game name to search for:",
+            initialvalue=self.game_data.get('name', ''),
+            parent=self.frame,
+        )
+        if not term:
+            return
+
+        self.match_status.configure(text=f"Searching Steam for {term!r}...", fg='orange')
+
+        def worker():
+            matches = _SEARCH.search(term)
+
+            def apply():
+                if not matches:
+                    self.match_status.configure(
+                        text=f"No Steam results for {term!r}", fg='gray'
+                    )
+                    return
+                self.game_data['candidate'] = self.game_data['candidate']._replace(
+                    matches=tuple(matches)
+                )
+                self.match_combo.configure(values=self._match_labels())
+                self.match_var.set(f"{matches[0].name}  [{matches[0].appid}]")
+                self._on_match_selected()
+
+            try:
+                self.frame.after(0, apply)
+            except tk.TclError:
+                pass
+
+        threading.Thread(target=worker, daemon=True).start()
     
     def _create_icon(self, parent):
         """Create the icon display with asynchronous loading."""
@@ -262,7 +441,22 @@ class GameEntryWidget:
             # Update the game object's exe path
             if 'game_object' in self.game_data:
                 self.game_data['game_object'].Exe = file_path
-            
+
+            # The shortcut app ID is derived from name + executable, so a new
+            # executable means a new ID and a new place for the artwork.
+            candidate = self.game_data.get('candidate')
+            if candidate is not None:
+                self.game_data['candidate'] = candidate._replace(
+                    exe_path=Path(file_path),
+                    start_dir=Path(file_path).parent,
+                )
+                self._apply_match(
+                    steam_id=candidate.steam_id,
+                    name=self.game_data.get('name', candidate.name),
+                    confirmed=candidate.confirmed,
+                )
+
+
             # Refresh the icon with the new executable
             self._refresh_icon()
             
@@ -281,6 +475,10 @@ class GameEntryWidget:
     def get_game_object(self):
         """Get the associated game object."""
         return self.game_data.get('game_object')
+
+    def get_candidate(self):
+        """Get the discovery candidate, including any match the user picked."""
+        return self.game_data.get('candidate')
     
     def get_name(self):
         """Get the game name."""

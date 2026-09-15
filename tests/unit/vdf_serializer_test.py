@@ -144,6 +144,45 @@ class TestVDFSerializer:
         assert shortcut2["AppName"] == "Another Game"
         assert shortcut2["tags"] == {"favorite": True, "genre": "RPG"}
     
+    def test_round_trip_preserves_every_field(self):
+        """Reading and rewriting a shortcut must not alter or drop anything.
+
+        shortcuts.vdf is rewritten in full on every save, so any field the
+        serializer does not carry through is permanently lost from shortcuts
+        the user already had. "sortas" -- the name they chose for sorting --
+        was being dropped, and the VR flag was being renamed from Steam's
+        lowercase "openvr" to "OpenVR".
+        """
+        original = {
+            "shortcuts": {
+                "0": {
+                    "appid": 2731730943,
+                    "AppName": "Some Game",
+                    "Exe": '"C:\\Games\\Some Game\\game.exe"',
+                    "StartDir": "C:\\Games\\Some Game\\",
+                    "icon": "",
+                    "ShortcutPath": "",
+                    "LaunchOptions": "",
+                    "IsHidden": 0,
+                    "AllowDesktopConfig": 1,
+                    "AllowOverlay": 1,
+                    "openvr": 0,
+                    "Devkit": 0,
+                    "DevkitGameID": "",
+                    "DevkitOverrideAppID": 0,
+                    "LastPlayTime": 1766631989,
+                    "FlatpakAppID": "",
+                    "sortas": "Game, Some",
+                    "tags": {},
+                }
+            }
+        }
+
+        games = VDFSerializer.games_from_vdf_dict(original)
+        round_tripped = VDFSerializer.games_to_vdf_dict(games)
+
+        assert round_tripped == original
+
     def test_games_to_vdf_dict_preserves_all_fields(self, sample_games):
         """Test that serialization preserves all game fields."""
         game = sample_games[1]  # Test Game with more fields set
@@ -155,7 +194,7 @@ class TestVDFSerializer:
         required_fields = [
             "appid", "AppName", "Exe", "StartDir", "icon", "ShortcutPath",
             "LaunchOptions", "IsHidden", "AllowDesktopConfig", "AllowOverlay",
-            "OpenVR", "Devkit", "DevkitGameID", "DevkitOverrideAppID",
+            "openvr", "Devkit", "DevkitGameID", "DevkitOverrideAppID",
             "LastPlayTime", "FlatpakAppID", "tags"
         ]
         

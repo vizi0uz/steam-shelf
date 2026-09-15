@@ -95,7 +95,8 @@ class GameListWidget:
                 selected_games.append({
                     'name': widget.get_name(),
                     'path': widget.get_path(),
-                    'game_object': widget.get_game_object()
+                    'game_object': widget.get_game_object(),
+                    'candidate': widget.get_candidate(),
                 })
             else:
                 # Game is not selected, should be removed

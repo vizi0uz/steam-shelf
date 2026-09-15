@@ -39,13 +39,41 @@ def _get_shortcuts_path(user_id: int) -> Path:
 
 
 def kill_steam():
-    """Forcefully terminate Steam process."""
+    """Ask Steam to close, falling back to a forced kill.
+
+    Steam has to be closed before shortcuts.vdf is written, because it rewrites
+    that file on exit. Asking first avoids interrupting a download or losing
+    unsaved game state; the kill stays as a last resort.
+    """
+    import time
+
+    def running() -> bool:
+        result = subprocess.run(
+            ["tasklist", "/FI", "IMAGENAME eq steam.exe", "/NH"],
+            capture_output=True, text=True, check=False,
+        )
+        return "steam.exe" in result.stdout.lower()
+
     try:
-        subprocess.run(["taskkill", "/IM", "Steam.exe", "/F"], 
-                      capture_output=True, check=False)
+        if not running():
+            return
+
+        print("Asking Steam to close...")
+        subprocess.run(["cmd", "/c", "start", "", "steam://exit"],
+                       capture_output=True, check=False)
+
+        for _ in range(30):
+            if not running():
+                print("Steam closed.")
+                return
+            time.sleep(1)
+
+        print("Steam did not close in time; terminating it.")
+        subprocess.run(["taskkill", "/IM", "Steam.exe", "/F"],
+                       capture_output=True, check=False)
         print("Steam process terminated.")
     except Exception as e:
-        print(f"Warning: Could not kill Steam process: {e}")
+        print(f"Warning: Could not close Steam: {e}")
 
 
 def get_main_user() -> Any:
@@ -150,11 +178,18 @@ def list_games(args):
 
 
 def sync_database(args):
-    """Sync the local Steam game database."""
-    print("Syncing Steam game database...")
+    """Report that the bulk sync no longer exists, and show the cache instead."""
+    import sqlite3
+
     db = SteamDatabase()
-    db.sync()
-    print("Database sync completed.")
+    print(
+        "Steam removed the ISteamApps/GetAppList endpoint, so there is no app "
+        "list left to mirror. Names are now resolved through Steam's search as "
+        "they are needed, and the results are cached."
+    )
+    with sqlite3.connect(db.db_path) as conn:
+        cached = conn.execute("SELECT COUNT(*) FROM resolutions").fetchone()[0]
+    print(f"Cache: {db.db_path} ({cached} resolved names)")
 
 
 def clear_games(args):

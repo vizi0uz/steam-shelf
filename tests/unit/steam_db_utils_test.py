@@ -4,6 +4,16 @@ from pathlib import Path
 from core.services.steam_db_utils import SteamDatabase, safe_name
 
 
+class _OfflineSearch:
+    """Stand-in for SteamAppSearch that never reaches the network."""
+
+    def search(self, term, limit=8):
+        return []
+
+    def best_match(self, term, confident_at=0.92):
+        return None, False
+
+
 class TestSafeName:
     """Tests for the safe_name utility function."""
     
@@ -261,8 +271,11 @@ class TestSteamDatabaseEdgeCases:
     def test_duplicate_game_ids(self, tmp_path):
         """Test handling of duplicate game IDs."""
         db_path = tmp_path / "test.db"
-        db = SteamDatabase(str(db_path))
-        
+        # A name missing from the table now falls through to an online search,
+        # so the search is stubbed out to keep this test offline.
+        db = SteamDatabase(str(db_path), search=_OfflineSearch())
+
+
         with db._get_connection() as conn:
             # Add first game
             conn.execute("INSERT INTO games (id, name, safe_name) VALUES (?, ?, ?)",

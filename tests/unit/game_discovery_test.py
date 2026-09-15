@@ -5,12 +5,27 @@ from core.services.game_validator import GameValidator
 from core.services.steam_db_utils import SteamDatabase
 
 
+class _OfflineSearch:
+    """Stand-in for SteamAppSearch that never reaches the network.
+
+    Discovery must be testable without Steam being reachable, and a test that
+    silently queried the live store would be both slow and non-deterministic.
+    """
+
+    def search(self, term, limit=8):
+        return []
+
+    def best_match(self, term, confident_at=0.92):
+        return None, False
+
+
 @pytest.fixture
 def steam_db(tmp_path):
     """Create a test Steam database."""
     db_path = tmp_path / "test.db"
-    db = SteamDatabase(str(db_path))
-    
+    db = SteamDatabase(str(db_path), search=_OfflineSearch())
+
+
     # Add some test games
     test_games = [
         (123, "Test Game", "Test Game"),
@@ -106,18 +121,20 @@ class TestGameDiscoveryService:
     def test_discover_games_success(self, discovery_service, test_game_structure):
         """Test successful game discovery."""
         candidates = discovery_service.discover_games_from_directory(test_game_structure)
-        
-        # Should find Test Game and Another Game
-        assert len(candidates) == 2
-        
+
+        # Test Game, Another Game and Unknown Game: a folder with executables is
+        # a candidate whether or not it could be identified on Steam.
+        assert len(candidates) == 3
+
         # Verify the candidates
         candidate_names = [c.name for c in candidates]
         assert "Test Game" in candidate_names
         assert "Another Game" in candidate_names
-        
+
         # Check Test Game candidate
         test_game_candidate = next(c for c in candidates if c.name == "Test Game")
         assert test_game_candidate.steam_id == 123
+        assert test_game_candidate.confirmed is True
         assert isinstance(test_game_candidate.shortcut_id, int)
         assert test_game_candidate.exe_path.name == "TestGame.exe"
         assert test_game_candidate.start_dir == test_game_candidate.exe_path.parent
@@ -140,15 +157,32 @@ class TestGameDiscoveryService:
         assert progress_calls[-1] == ("Game discovery complete", 1.0)
         
         # Should still find games
-        assert len(candidates) == 2
-    
-    def test_discover_games_skips_unknown(self, discovery_service, test_game_structure):
-        """Test that discovery skips games not in Steam database."""
+        assert len(candidates) == 3
+
+    def test_discover_keeps_unidentified_games(self, discovery_service, test_game_structure):
+        """A game that cannot be identified on Steam is kept, not discarded.
+
+        This is the regression guard for the bug that made discovery report
+        "no executable files found": the Steam lookup ran first and threw the
+        folder away before its executables were ever examined.
+        """
         candidates = discovery_service.discover_games_from_directory(test_game_structure)
-        
-        # Should not find "Unknown Game" as it's not in the database
-        candidate_names = [c.name for c in candidates]
-        assert "Unknown Game" not in candidate_names
+
+        unknown = next(c for c in candidates if c.name == "Unknown Game")
+        assert unknown.steam_id is None
+        assert unknown.confirmed is False
+        assert unknown.exe_path.name == "unknown.exe"
+
+    def test_discovery_stats_explain_an_empty_scan(self, discovery_service, test_game_structure):
+        """The scan reports why folders were rejected, not just how many."""
+        discovery_service.discover_games_from_directory(test_game_structure)
+        stats = discovery_service.last_stats
+
+        assert stats.directories_seen == 6
+        assert stats.candidates == 3
+        assert stats.without_executables == 2   # Space Game, Racing Game
+        assert stats.directories_skipped == 1   # steam
+        assert stats.without_steam_match == 1   # Unknown Game
     
     def test_discover_games_skips_blacklisted_dirs(self, discovery_service, test_game_structure):
         """Test that discovery skips blacklisted directories."""
@@ -172,10 +206,11 @@ class TestGameDiscoveryService:
         service = GameDiscoveryService(steam_db, validator, added_games)
         
         candidates = service.discover_games_from_directory(test_game_structure)
-        
-        # Should only find "Another Game", not "Test Game"
-        assert len(candidates) == 1
-        assert candidates[0].name == "Another Game"
+
+        # "Test Game" is skipped; the other two usable folders remain
+        candidate_names = [c.name for c in candidates]
+        assert "Test Game" not in candidate_names
+        assert "Another Game" in candidate_names
     
     def test_discover_games_empty_directory(self, discovery_service, tmp_path):
         """Test discovery with empty directory."""
@@ -288,13 +323,21 @@ class TestPrivateMethods:
         assert candidate is None
     
     def test_process_directory_not_in_database(self, discovery_service, tmp_path):
-        """Test processing directory for game not in database."""
+        """A directory that cannot be identified still yields a candidate.
+
+        It keeps the folder's own name and carries no Steam ID, so the user can
+        confirm or correct it instead of the folder disappearing silently.
+        """
         unknown_dir = tmp_path / "Unknown Game"
         unknown_dir.mkdir()
         (unknown_dir / "unknown.exe").write_text("unknown game")
-        
+
         candidate = discovery_service._process_directory(unknown_dir)
-        assert candidate is None
+
+        assert candidate is not None
+        assert candidate.name == "Unknown Game"
+        assert candidate.steam_id is None
+        assert candidate.confirmed is False
     
     def test_process_directory_no_valid_executables(self, discovery_service, tmp_path):
         """Test processing directory with no valid executables."""

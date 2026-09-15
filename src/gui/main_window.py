@@ -44,36 +44,52 @@ class SteamShelfGUI:
             pass  # Use default icon if file not found
     
     def show_loading_and_sync(self):
-        """Show loading screen and perform database synchronization."""
+        """Show loading screen while Steam users are read."""
         # Create and show loading screen
         self.loading_screen = LoadingScreen(self.root)
         self.loading_screen.show()
-        
-        # Start database sync in a separate thread
-        sync_thread = threading.Thread(target=self.perform_sync, daemon=True)
-        sync_thread.start()
-    
-    def perform_sync(self):
-        """Perform database synchronization with progress updates."""
+
+        # Look up Steam users in a separate thread
+        startup_thread = threading.Thread(target=self.perform_startup, daemon=True)
+        startup_thread.start()
+
+    def perform_startup(self):
+        """Load Steam users.
+
+        There is no database to synchronise any more: Steam removed the bulk
+        app-list endpoint, and names are resolved on demand instead. Startup is
+        now just reading the local Steam users, which is fast.
+        """
         try:
-            def progress_callback(progress, message):
-                # Schedule UI update on main thread
-                self.root.after(0, lambda: self.loading_screen.update_progress(progress, message))
-            
-            # Perform the sync
-            self.steam_db.sync(progress_callback)
-            
-            # Load users after sync is complete
+            self.root.after(
+                0, lambda: self.loading_screen.update_progress(40, "Reading Steam users...")
+            )
             self.users = get_users()
-            
-            # Schedule transition to user selection on main thread
+
+            if not self.users:
+                raise RuntimeError(
+                    "No Steam users found. Sign in to Steam at least once, then reopen Steam Shelf."
+                )
+
+            self.root.after(
+                0, lambda: self.loading_screen.update_progress(100, "Ready")
+            )
             self.root.after(0, self.transition_to_user_selection)
-            
+
         except Exception as e:
-            # Handle sync errors
-            error_message = f"Error during initialization: {str(e)}"
-            self.root.after(0, lambda: self.loading_screen.update_progress(0, error_message))
-            print(f"Sync error: {e}")
+            # A startup failure must stop the flow, not let the user continue
+            # into an interface that cannot work.
+            message = str(e)
+            print(f"Startup error: {message}")
+            self.root.after(0, lambda: self._fail_startup(message))
+
+    def _fail_startup(self, message: str):
+        """Report a fatal startup problem and close."""
+        from tkinter import messagebox
+
+        self.loading_screen.update_progress(0, "Startup failed")
+        messagebox.showerror("Steam Shelf could not start", message)
+        self.root.destroy()
     
     def transition_to_user_selection(self):
         """Transition from loading screen to user selection."""
@@ -107,14 +123,13 @@ class SteamShelfGUI:
         from core.services.game_discovery import GameDiscoveryService
         from core.services.game_validator import GameValidator
         
+        from core.models.repository import BLACKLISTED_DIRECTORIES, BLACKLISTED_EXECUTABLES
+
         games_already_added = {game.AppName for game in self.steam_repo.games}
-        validator = GameValidator(
-            {"steam"},  # BLACKLISTED_DIRECTORIES
-            {"uninstall", "setup", "update"}  # BLACKLISTED_EXECUTABLES
-        )
-        
+        validator = GameValidator(BLACKLISTED_DIRECTORIES, BLACKLISTED_EXECUTABLES)
+
         self.steam_repo.discovery_service = GameDiscoveryService(
-            self.steam_db,  # Use our synced database
+            self.steam_db,  # Shared resolution cache
             validator,
             added_games=games_already_added
         )

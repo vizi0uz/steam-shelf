@@ -36,12 +36,14 @@ class VDFSerializer:
                 IsHidden=shortcut_data.get("IsHidden", 0),
                 AllowDesktopConfig=shortcut_data.get("AllowDesktopConfig", 1),
                 AllowOverlay=shortcut_data.get("AllowOverlay", 1),
-                OpenVR=shortcut_data.get("OpenVR", 0),
+                # Steam writes this key lowercase; accept either spelling.
+                openvr=shortcut_data.get("openvr", shortcut_data.get("OpenVR", 0)),
                 Devkit=shortcut_data.get("Devkit", 0),
                 DevkitGameID=shortcut_data.get("DevkitGameID", ""),
                 DevkitOverrideAppID=shortcut_data.get("DevkitOverrideAppID", 0),
                 LastPlayTime=shortcut_data.get("LastPlayTime", 0),
                 FlatpakAppID=shortcut_data.get("FlatpakAppID", ""),
+                sortas=shortcut_data.get("sortas", ""),
                 tags=shortcut_data.get("tags", {})
             )
             games.append(game)

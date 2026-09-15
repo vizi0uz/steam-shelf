@@ -68,17 +68,19 @@ class GamesDisplayFrame:
             
             # Get the newly discovered games
             new_games = self.steam_repo.games[initial_games_count:]
-            
+            new_candidates = self.steam_repo.game_candidates[-len(new_games):] if new_games else []
+
             # Convert to our display format
             found_games = []
-            for game in new_games:
+            for game, candidate in zip(new_games, new_candidates):
                 found_games.append({
                     'name': game.AppName,
                     'path': game.Exe,
                     'selected': True,  # Default to selected
-                    'game_object': game  # Store the actual NonSteamGame object
+                    'game_object': game,  # Store the actual NonSteamGame object
+                    'candidate': candidate,  # Steam match plus the alternatives
                 })
-            
+
             return found_games, directory
         
         def on_scan_success(result):
@@ -128,9 +130,10 @@ class GamesDisplayFrame:
         dir_title.pack(pady=(0, 10))
         
         if not self.found_games:
-            no_games_label = tk.Label(self.games_display_frame, 
-                                     text="No executable files found in the selected directory.",
+            no_games_label = tk.Label(self.games_display_frame,
+                                     text=self._empty_scan_explanation(),
                                      font=("Arial", 10),
+                                     justify='left',
                                      bg='#2a2a2a', fg='gray')
             no_games_label.pack(pady=20)
             return
@@ -157,6 +160,32 @@ class GamesDisplayFrame:
         # Start progressive loading of games
         self._load_games_progressively(instruction_label, 0)
     
+    def _empty_scan_explanation(self) -> str:
+        """Say why a scan found nothing, using what the scan actually counted.
+
+        The old message always blamed missing executables, which is what made
+        the real cause -- folders discarded before their executables were ever
+        looked at -- impossible to diagnose from the UI.
+        """
+        stats = getattr(self.steam_repo, 'last_scan_stats', None)
+        if stats is None:
+            return "No games found in the selected directory."
+
+        if stats.directories_seen == 0:
+            return (
+                "That folder has no subfolders.\n"
+                "Pick the folder that contains your games, not a single game's folder."
+            )
+
+        lines = [f"Scanned {stats.directories_seen} folders, none usable:"]
+        if stats.without_executables:
+            lines.append(f"  - {stats.without_executables} contained no .exe file")
+        if stats.directories_skipped:
+            lines.append(f"  - {stats.directories_skipped} were already added or blacklisted")
+        if stats.without_steam_match:
+            lines.append(f"  - {stats.without_steam_match} could not be identified on Steam")
+        return "\n".join(lines)
+
     def _load_games_progressively(self, instruction_label, start_index, batch_size=2):
         """Load games in small batches to keep UI responsive."""
         end_index = min(start_index + batch_size, len(self.found_games))
@@ -236,12 +265,18 @@ class GamesDisplayFrame:
                     # Schedule update on main thread
                     self.parent.after(0, lambda m=message, p=progress: self.progress_dialog.update_progress(m, p))
             
+            # Artwork follows whatever the user confirmed in the list, not what
+            # discovery originally guessed.
+            self.steam_repo.game_candidates = [
+                game['candidate'] for game in selected_games if game.get('candidate')
+            ]
+
             # Save the updated games to VDF
             self.steam_repo.save_games_as_vdf()
-            
+
             # Download images for the new games with progress
             self.steam_repo.save_game_images(progress_callback=progress_update)
-            
+
             return selected_games
         
         def on_save_success(selected_games):

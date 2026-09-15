@@ -156,7 +156,7 @@ class TestNonSteamGame:
         # Should contain all other attributes with default values
         assert game_dict["IsHidden"] == 0
         assert game_dict["AllowOverlay"] == 1
-        assert game_dict["OpenVR"] == 0
+        assert game_dict["openvr"] == 0
 
 
 class TestNonSteamGameEdgeCases:
@@ -328,7 +328,7 @@ class TestNonSteamGameIntegration:
         required_fields = [
             "appid", "AppName", "Exe", "StartDir", "icon", "ShortcutPath",
             "LaunchOptions", "IsHidden", "AllowDesktopConfig", "AllowOverlay",
-            "OpenVR", "Devkit", "DevkitGameID", "DevkitOverrideAppID",
+            "openvr", "Devkit", "DevkitGameID", "DevkitOverrideAppID",
             "LastPlayTime", "FlatpakAppID", "tags"
         ]
         
