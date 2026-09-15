@@ -39,11 +39,13 @@ python -m pytest -m "not integration"
 
 The integration tests cover:
 
-### 1. **Steam App List Endpoint Verification** (`test_steam_app_list_endpoint_returns_game_titles`)
+### 1. **Steam App List Endpoint Removal** (`test_steam_app_list_endpoint_is_gone`)
 
-- Tests Steam's app list endpoint (`ISteamApps/GetAppList/v2`)
-- Verifies game records include app IDs and names
-- Validates known game titles are present
+- Asserts all four variants of `ISteamApps/GetAppList` answer 404 with
+  `Method 'GetAppList' not found in interface 'ISteamApps'`
+- This is why `steam.db` is empty on a fresh install, and why discovery cannot treat a
+  failed name lookup as a reason to discard a folder
+- Fails if Valve restores the endpoint, which is when it is worth revisiting
 
 ### 2. **Steam CDN Endpoint Verification** (`test_steam_api_endpoint_real`)
 

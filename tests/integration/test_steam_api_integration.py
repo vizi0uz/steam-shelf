@@ -5,30 +5,26 @@ import requests
 
 
 @pytest.mark.integration
-def test_steam_app_list_endpoint_returns_game_titles():
-    """Integration test that verifies Steam's app list endpoint returns game titles."""
-    response = requests.get("https://api.steampowered.com/ISteamApps/GetAppList/v2/", timeout=20)
+@pytest.mark.parametrize(
+    "path",
+    ["GetAppList/v2/", "GetAppList/v2", "GetAppList/v0002/?format=json", "GetAppList/v1/"],
+)
+def test_steam_app_list_endpoint_is_gone(path):
+    """Steam removed the endpoint SteamDatabase.sync() mirrors.
 
-    assert response.status_code == 200
+    This test used to assert the app list came back with game titles. It does
+    not any more: every variant answers "Method 'GetAppList' not found in
+    interface 'ISteamApps'". That is why the database is empty on a fresh
+    install, and why discovery must not treat a failed name lookup as a reason
+    to discard a folder.
 
-    payload = response.json()
-    assert "applist" in payload
-    assert "apps" in payload["applist"]
+    It fails if Valve ever restores the endpoint, which is the day this is
+    worth revisiting.
+    """
+    response = requests.get(f"https://api.steampowered.com/ISteamApps/{path}", timeout=20)
 
-    apps = payload["applist"]["apps"]
-    assert isinstance(apps, list)
-    assert len(apps) > 0
-
-    sample = apps[0]
-    assert "appid" in sample
-    assert "name" in sample
-    assert isinstance(sample["appid"], int)
-    assert isinstance(sample["name"], str)
-
-    known_titles = {"Counter-Strike 2", "Dota 2", "Team Fortress 2"}
-    returned_titles = {app.get("name", "") for app in apps}
-    assert any(title in returned_titles for title in known_titles)
-
+    assert response.status_code == 404
+    assert "GetAppList" in response.text
 
 @pytest.mark.integration
 def test_steam_api_endpoint_real():
