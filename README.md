@@ -22,20 +22,30 @@ Steam Shelf is a tool that automates the process of adding collections of ~~lega
 
 
 ## 🚀Usage
-### **Important:** Folder Naming Convetion 
-For Steam Shelf to correctly identify your games and fetch the right data, **the game's folder name must closely match its name on Steam.**
+### Folder Naming
 
-**The Rule**: Your directory name must be **EXACTLY IDENTICAL** to the game's name on Steam, with one exception: you must remove any characters that are not allowed in Windows folder names.
+Steam Shelf looks each folder up through Steam's own store search, which does the
+fuzzy matching itself. The folder name has to be *recognisable*, not exact:
+`STALKER2` resolves to `S.T.A.L.K.E.R. 2: Heart of Chornobyl` with nothing renamed.
+Version tags and bracketed noise (`[GOG]`, `v1.32`, `Repack`) are stripped before the
+search.
 
+A folder Steam cannot identify is **not dropped**. It is listed with its folder name,
+flagged as unconfirmed, and you pick the right game from a dropdown or search for it by
+hand. That is also how you correct a wrong guess.
 
-**Invalid Windows Folder Characters:** `\ / : * ? " < > |`
-#### Examples:
-| Game Title on Steam | Correct Folder Name|
-| :--- | :--- | 
-| `Half-Life 2: Episode One` | `Half-Life 2 Episode One` |
-| `Amazing Frog?` | `Amazing Frog` |
-| `Emily is Away <3` | `Emily is Away 3` |
-| `Chair F*cking Simulator` | `Chair Fcking Simulator` |  ( ͠° ͟ʖ ͡°)
+| Folder name | Resolves to |
+| :--- | :--- |
+| `Alien Isolation` | `Alien: Isolation` |
+| `STALKER2` | `S.T.A.L.K.E.R. 2: Heart of Chornobyl` |
+| `Half-Life 2 Episode One` | `Half-Life 2: Episode One` |
+
+### Artwork
+
+Artwork comes from [SteamGridDB](https://www.steamgriddb.com) first, falling back to
+Steam's own CDN. SteamGridDB needs a free API key, read from the `STEAMGRIDDB_API_KEY`
+environment variable. Without it the tool still runs and uses the CDN alone -- which
+means games with no Steam store page get no artwork.
 
 ### GUI
 Just download and run steam shelf from the [releases](https://github.com/the-sofishticated-man/steam-shelf/releases)
@@ -49,10 +59,6 @@ cd steam-shelf
 install all the dependancies:
 ```
 pip install -r requirements.txt
-```
-sync the database:
-```
-./scripts/steam-shelf.bat sync-db
 ```
 then run the CLI script:
 ```

@@ -39,11 +39,15 @@ python -m pytest -m "not integration"
 
 The integration tests cover:
 
-### 1. **Steam App List Endpoint Verification** (`test_steam_app_list_endpoint_returns_game_titles`)
+### 1. **Storefront Search Verification** (`test_storefront_search_resolves_a_folder_name_to_an_appid`)
 
-- Tests Steam's app list endpoint (`ISteamApps/GetAppList/v2`)
-- Verifies game records include app IDs and names
-- Validates known game titles are present
+- Tests the endpoint name resolution runs on (`store.steampowered.com/api/storesearch`)
+- Verifies results carry integer app IDs and string names, and that `type` filtering
+  leaves apps rather than DLC
+- Asserts the fuzzy match works: the folder name `STALKER2` finds
+  `S.T.A.L.K.E.R. 2: Heart of Chornobyl`
+- Replaces the old `ISteamApps/GetAppList` test. Valve removed that endpoint; every
+  variant answers `Method 'GetAppList' not found in interface 'ISteamApps'`
 
 ### 2. **Steam CDN Endpoint Verification** (`test_steam_api_endpoint_real`)
 

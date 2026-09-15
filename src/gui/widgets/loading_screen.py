@@ -55,7 +55,7 @@ class LoadingScreen:
         # Status label
         self.status_label = tk.Label(
             container,
-            text="Preparing to sync...",
+            text="Starting up...",
             font=("Arial", 10),
             fg='#888888',
             bg='#2a2a2a'

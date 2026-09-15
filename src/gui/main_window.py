@@ -29,7 +29,7 @@ class SteamShelfGUI:
         self.games_display = None
         
         self.setup_window()
-        self.show_loading_and_sync()
+        self.show_loading()
     
     def setup_window(self):
         """Initialize the main window."""
@@ -43,7 +43,7 @@ class SteamShelfGUI:
         except:
             pass  # Use default icon if file not found
     
-    def show_loading_and_sync(self):
+    def show_loading(self):
         """Show loading screen while Steam users are read."""
         # Create and show loading screen
         self.loading_screen = LoadingScreen(self.root)

@@ -3,6 +3,7 @@ import threading
 from pathlib import Path
 from tkinter import filedialog, ttk
 
+from core.models.non_steam_game import as_start_dir, quote_exe
 from core.services.steam_search import SteamAppSearch
 from core.utils.shortcut_utils import generate_shortcut_appid
 from gui.utils.icon_extractor import IconExtractor
@@ -204,6 +205,12 @@ class GameEntryWidget:
         if game_object is not None:
             game_object.AppName = name
             game_object.appid = shortcut_id
+            # Exe and StartDir are rewritten here rather than at the file
+            # picker, because this is the one place both the name change and
+            # the path change pass through -- and because assigning the raw
+            # path would drop the quoting Steam needs.
+            game_object.Exe = quote_exe(exe)
+            game_object.StartDir = as_start_dir(Path(exe).parent)
 
         self.name_label.configure(text=self._header_text())
         self.match_status.configure(
@@ -438,12 +445,10 @@ class GameEntryWidget:
         )
         if file_path:
             self.path_var.set(file_path)
-            # Update the game object's exe path
-            if 'game_object' in self.game_data:
-                self.game_data['game_object'].Exe = file_path
 
             # The shortcut app ID is derived from name + executable, so a new
             # executable means a new ID and a new place for the artwork.
+            # _apply_match rewrites Exe and StartDir along with it.
             candidate = self.game_data.get('candidate')
             if candidate is not None:
                 self.game_data['candidate'] = candidate._replace(
@@ -455,7 +460,11 @@ class GameEntryWidget:
                     name=self.game_data.get('name', candidate.name),
                     confirmed=candidate.confirmed,
                 )
-
+            else:
+                game_object = self.game_data.get('game_object')
+                if game_object is not None:
+                    game_object.Exe = quote_exe(file_path)
+                    game_object.StartDir = as_start_dir(Path(file_path).parent)
 
             # Refresh the icon with the new executable
             self._refresh_icon()

@@ -182,9 +182,25 @@ class GamesDisplayFrame:
             lines.append(f"  - {stats.without_executables} contained no .exe file")
         if stats.directories_skipped:
             lines.append(f"  - {stats.directories_skipped} were already added or blacklisted")
-        if stats.without_steam_match:
-            lines.append(f"  - {stats.without_steam_match} could not be identified on Steam")
+        # `without_steam_match` deliberately has no line here: a folder Steam
+        # could not identify still becomes a candidate, so it can never be a
+        # reason the scan came back empty. `_unidentified_notice` reports it
+        # instead, next to the games themselves.
         return "\n".join(lines)
+
+    def _unidentified_notice(self) -> str:
+        """Tell the user how many games still need a Steam title, if any.
+
+        These are candidates, not rejections -- they are listed and editable;
+        they just carry their folder name until the user picks the match.
+        """
+        stats = getattr(self.steam_repo, 'last_scan_stats', None)
+        if stats is None or not stats.without_steam_match:
+            return ""
+        return (
+            f"\n{stats.without_steam_match} could not be identified on Steam "
+            "-- set the match on each before adding."
+        )
 
     def _load_games_progressively(self, instruction_label, start_index, batch_size=2):
         """Load games in small batches to keep UI responsive."""
@@ -204,7 +220,10 @@ class GamesDisplayFrame:
             self.parent.after(5, lambda: self._load_games_progressively(instruction_label, end_index, batch_size))
         else:
             # All games loaded
-            instruction_label.configure(text=f"Found {len(self.found_games)} potential games. Edit paths if needed:")
+            instruction_label.configure(
+                text=f"Found {len(self.found_games)} potential games. Edit paths if needed:"
+                     + self._unidentified_notice()
+            )
             
             # Hide loading indicator
             if hasattr(self, 'loading_indicator'):

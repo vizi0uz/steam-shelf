@@ -1,6 +1,23 @@
 import json
 from pathlib import Path
 
+
+def quote_exe(path) -> str:
+    """Return an executable path in the quoted form Steam writes.
+
+    Without the quotes a path containing spaces is parsed as a command plus
+    arguments and the shortcut fails to launch.
+    """
+    exe = str(path)
+    return exe if exe.startswith('"') else f'"{exe}"'
+
+
+def as_start_dir(path) -> str:
+    """Return a directory in the form Steam writes: unquoted, trailing separator."""
+    start_dir = str(path)
+    return start_dir if start_dir.endswith(("\\", "/")) else start_dir + "\\"
+
+
 class NonSteamGame:
     
     def __init__(self,
@@ -64,17 +81,12 @@ class NonSteamGame:
         """Create a NonSteamGame from a GameCandidate.
 
         Exe is quoted and StartDir carries a trailing separator, matching what
-        Steam itself writes. Without the quotes a path containing spaces --
-        "C:\\Games\\DRM Free\\..." -- is parsed as a command plus arguments and
+    Without the quotes a path containing spaces is parsed as a command plus
+    arguments and the shortcut fails to launch.
         the shortcut fails to launch.
         """
-        exe = str(candidate.exe_path)
-        start_dir = str(candidate.start_dir)
-
-        if not exe.startswith('"'):
-            exe = f'"{exe}"'
-        if not start_dir.endswith(("\\", "/")):
-            start_dir = start_dir + "\\"
+        exe = quote_exe(candidate.exe_path)
+        start_dir = as_start_dir(candidate.start_dir)
 
         return cls(
             id=candidate.shortcut_id,  # Use shortcut_id for the non-Steam game app ID

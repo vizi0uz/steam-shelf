@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import Any, Optional
 
 from core.models.repository import NonSteamGameRepository
-from core.services.steam_db_utils import SteamDatabase
 from core.utils.vdf_utils import parse_vdf
 
 
@@ -177,21 +176,6 @@ def list_games(args):
             print()
 
 
-def sync_database(args):
-    """Report that the bulk sync no longer exists, and show the cache instead."""
-    import sqlite3
-
-    db = SteamDatabase()
-    print(
-        "Steam removed the ISteamApps/GetAppList endpoint, so there is no app "
-        "list left to mirror. Names are now resolved through Steam's search as "
-        "they are needed, and the results are cached."
-    )
-    with sqlite3.connect(db.db_path) as conn:
-        cached = conn.execute("SELECT COUNT(*) FROM resolutions").fetchone()[0]
-    print(f"Cache: {db.db_path} ({cached} resolved names)")
-
-
 def clear_games(args):
     """Clear all non-Steam games from shortcuts."""
     user = get_main_user()
@@ -329,7 +313,6 @@ def main():
 Examples:
   %(prog)s discover "C:/Games" --kill-steam
   %(prog)s list --verbose
-  %(prog)s sync-db
   %(prog)s clear --yes
   %(prog)s read-vdf shortcuts.vdf --format json
   %(prog)s read-vdf shortcuts.vdf --format shortcuts --verbose
@@ -356,10 +339,6 @@ Examples:
     list_parser.add_argument('-v', '--verbose', action='store_true',
                            help='Show detailed game information')
     list_parser.set_defaults(func=list_games)
-    
-    # Sync database command
-    sync_parser = subparsers.add_parser('sync-db', help='Sync Steam game database')
-    sync_parser.set_defaults(func=sync_database)
     
     # Clear command
     clear_parser = subparsers.add_parser('clear', help='Remove all non-Steam games')

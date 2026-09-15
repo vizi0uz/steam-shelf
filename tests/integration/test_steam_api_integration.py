@@ -5,29 +5,37 @@ import requests
 
 
 @pytest.mark.integration
-def test_steam_app_list_endpoint_returns_game_titles():
-    """Integration test that verifies Steam's app list endpoint returns game titles."""
-    response = requests.get("https://api.steampowered.com/ISteamApps/GetAppList/v2/", timeout=20)
+def test_storefront_search_resolves_a_folder_name_to_an_appid():
+    """The endpoint name resolution actually runs on.
+
+    This replaced ISteamApps/GetAppList, which Valve removed: every variant of
+    it now answers "Method 'GetAppList' not found in interface 'ISteamApps'".
+    The storefront search needs no API key and does the fuzzy matching itself,
+    which is why folder names no longer have to match Steam's exactly.
+    """
+    response = requests.get(
+        "https://store.steampowered.com/api/storesearch/",
+        params={"term": "STALKER2", "cc": "us", "l": "en"},
+        headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) steam-shelf"},
+        timeout=20,
+    )
 
     assert response.status_code == 200
 
     payload = response.json()
-    assert "applist" in payload
-    assert "apps" in payload["applist"]
+    assert "items" in payload
 
-    apps = payload["applist"]["apps"]
-    assert isinstance(apps, list)
-    assert len(apps) > 0
+    apps = [item for item in payload["items"] if item.get("type") == "app"]
+    assert apps, "storefront search returned no apps"
 
     sample = apps[0]
-    assert "appid" in sample
-    assert "name" in sample
-    assert isinstance(sample["appid"], int)
+    assert isinstance(sample["id"], int)
     assert isinstance(sample["name"], str)
 
-    known_titles = {"Counter-Strike 2", "Dota 2", "Team Fortress 2"}
-    returned_titles = {app.get("name", "") for app in apps}
-    assert any(title in returned_titles for title in known_titles)
+    # The whole point of the fuzzy match: a folder named "STALKER2" finds the
+    # game whose real title is "S.T.A.L.K.E.R. 2: Heart of Chornobyl".
+    assert any("S.T.A.L.K.E.R. 2" in app["name"] for app in apps)
+
 
 
 @pytest.mark.integration

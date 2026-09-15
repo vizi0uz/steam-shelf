@@ -1,7 +1,35 @@
 import pytest
 import json
 from pathlib import Path
-from core.models.non_steam_game import NonSteamGame
+from core.models.non_steam_game import NonSteamGame, as_start_dir, quote_exe
+
+
+class TestSteamFieldHelpers:
+    """The GUI rewrites Exe and StartDir too, so the formatting lives in helpers.
+
+    Assigning a raw path straight onto the model is the regression these guard:
+    it drops the quoting and leaves StartDir pointing at the old folder.
+    """
+
+    def test_quote_exe_adds_quotes(self):
+        assert quote_exe(r"C:\Games\DRM Free\Some Game\game.exe") == (
+            r'"C:\Games\DRM Free\Some Game\game.exe"'
+        )
+
+    def test_quote_exe_is_idempotent(self):
+        once = quote_exe(r"C:\Games\g.exe")
+        assert quote_exe(once) == once
+
+    def test_quote_exe_accepts_a_path_object(self):
+        assert quote_exe(Path(r"C:\Games\g.exe")).startswith('"')
+
+    def test_as_start_dir_adds_a_trailing_separator(self):
+        assert as_start_dir(r"C:\Games\Some Game") == "C:\\Games\\Some Game\\"
+
+    def test_as_start_dir_is_idempotent(self):
+        once = as_start_dir(r"C:\Games\Some Game")
+        assert as_start_dir(once) == once
+
 
 
 class TestFromCandidateFormatting:
