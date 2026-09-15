@@ -4,6 +4,43 @@ from pathlib import Path
 from core.models.non_steam_game import NonSteamGame
 
 
+class TestFromCandidateFormatting:
+    """The shortcut fields have to match what Steam itself writes."""
+
+    def _candidate(self, tmp_path):
+        from core.services.game_discovery import GameCandidate
+
+        exe = tmp_path / "DRM Free" / "Some Game" / "game.exe"
+        exe.parent.mkdir(parents=True)
+        exe.write_text("x")
+        return GameCandidate(
+            steam_id=1,
+            shortcut_id=2,
+            name="Some Game",
+            exe_path=exe,
+            start_dir=exe.parent,
+        )
+
+    def test_exe_is_quoted(self, tmp_path):
+        """An unquoted path containing spaces is parsed as command plus args."""
+        game = NonSteamGame.from_candidate(self._candidate(tmp_path))
+
+        assert game.Exe.startswith('"')
+        assert game.Exe.endswith('"')
+
+    def test_start_dir_ends_with_a_separator(self, tmp_path):
+        game = NonSteamGame.from_candidate(self._candidate(tmp_path))
+
+        assert game.StartDir.endswith("\\")
+
+    def test_quoting_is_not_applied_twice(self, tmp_path):
+        candidate = self._candidate(tmp_path)
+        quoted = candidate._replace(exe_path=f'"{candidate.exe_path}"')
+        game = NonSteamGame.from_candidate(quoted)
+
+        assert not game.Exe.startswith('""')
+
+
 class TestNonSteamGame:
     """Tests for NonSteamGame class."""
     
@@ -97,8 +134,10 @@ class TestNonSteamGame:
         
         assert game.appid == 987654321
         assert game.AppName == "Test Game"
-        assert game.Exe == str(candidate.exe_path)  # Use str() for cross-platform compatibility
-        assert game.StartDir == str(candidate.start_dir)
+        # Exe is quoted and StartDir gets a trailing separator, the way Steam
+        # writes them; see TestFromCandidateFormatting for why.
+        assert game.Exe == f'"{candidate.exe_path}"'
+        assert game.StartDir == f"{candidate.start_dir}\\"
         
         # Should have default values for other fields
         assert game.icon == ""

@@ -61,12 +61,26 @@ class NonSteamGame:
 
     @classmethod
     def from_candidate(cls, candidate):
-        """Create a NonSteamGame from a GameCandidate."""
+        """Create a NonSteamGame from a GameCandidate.
+
+        Exe is quoted and StartDir carries a trailing separator, matching what
+        Steam itself writes. Without the quotes a path containing spaces --
+        "C:\\Games\\DRM Free\\..." -- is parsed as a command plus arguments and
+        the shortcut fails to launch.
+        """
+        exe = str(candidate.exe_path)
+        start_dir = str(candidate.start_dir)
+
+        if not exe.startswith('"'):
+            exe = f'"{exe}"'
+        if not start_dir.endswith(("\\", "/")):
+            start_dir = start_dir + "\\"
+
         return cls(
             id=candidate.shortcut_id,  # Use shortcut_id for the non-Steam game app ID
             name=candidate.name,
-            exe=str(candidate.exe_path),
-            dir=str(candidate.start_dir)
+            exe=exe,
+            dir=start_dir
         )
     
     def __str__(self):

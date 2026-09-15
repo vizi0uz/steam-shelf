@@ -125,13 +125,13 @@ class SteamShelfGUI:
         
         from core.models.repository import BLACKLISTED_DIRECTORIES, BLACKLISTED_EXECUTABLES
 
-        games_already_added = {game.AppName for game in self.steam_repo.games}
         validator = GameValidator(BLACKLISTED_DIRECTORIES, BLACKLISTED_EXECUTABLES)
 
         self.steam_repo.discovery_service = GameDiscoveryService(
             self.steam_db,  # Shared resolution cache
             validator,
-            added_games=games_already_added
+            added_games={game.AppName for game in self.steam_repo.games},
+            added_executables={game.Exe for game in self.steam_repo.games},
         )
         
         # Hide user selection frame

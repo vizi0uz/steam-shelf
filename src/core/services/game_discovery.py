@@ -34,11 +34,29 @@ class GameCandidate(NamedTuple):
 
 
 class GameDiscoveryService:
-    def __init__(self, steam_db: SteamDatabase, validator: GameValidator, added_games: set = None):
+    def __init__(
+        self,
+        steam_db: SteamDatabase,
+        validator: GameValidator,
+        added_games: set = None,
+        added_executables: set = None,
+    ):
         self.steam_db = steam_db
         self.validator = validator
         self.games_already_added = added_games or set()  # Track added games to avoid duplicates
+        # Names stop matching once a shortcut takes its proper Steam title --
+        # the folder "STALKER2" becomes "S.T.A.L.K.E.R. 2: Heart of Chornobyl",
+        # so a second scan would add it again. The executable path does not
+        # change, which makes it the reliable identity.
+        self.executables_already_added = {
+            self._normalize_exe(path) for path in (added_executables or set())
+        }
         self.last_stats = DiscoveryStats()
+
+    @staticmethod
+    def _normalize_exe(path) -> str:
+        """Compare executables ignoring case and the quotes Steam adds."""
+        return str(path).strip().strip('"').lower()
 
     def discover_games_from_directory(self, path: Path, progress_callback=None) -> List[GameCandidate]:
         """Discover games from a directory structure."""
@@ -106,6 +124,11 @@ class GameDiscoveryService:
             return None
 
         main_exe = self.validator.find_main_executable(valid_exes, folder_name, directory)
+
+        if self._normalize_exe(main_exe.resolve()) in self.executables_already_added:
+            counters["directories_skipped"] = counters.get("directories_skipped", 0) + 1
+            return None
+
         print(f"Likely main exe for {folder_name}: {main_exe}")
 
         # Now try to identify the game on Steam. A miss is no longer fatal: the

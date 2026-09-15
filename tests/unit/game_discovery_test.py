@@ -212,6 +212,27 @@ class TestGameDiscoveryService:
         assert "Test Game" not in candidate_names
         assert "Another Game" in candidate_names
     
+    def test_discover_skips_games_already_added_by_executable(
+        self, steam_db, validator, test_game_structure
+    ):
+        """A shortcut is recognised by its executable, not by its name.
+
+        Once a shortcut takes its proper Steam title the folder name no longer
+        matches it, so name-only deduplication would add the same game again on
+        the next scan.
+        """
+        existing_exe = f'"{test_game_structure / "Test Game" / "TestGame.exe"}"'
+        service = GameDiscoveryService(
+            steam_db,
+            validator,
+            added_games={"A Completely Different Title"},
+            added_executables={existing_exe},
+        )
+
+        candidates = service.discover_games_from_directory(test_game_structure)
+
+        assert "Test Game" not in [c.name for c in candidates]
+
     def test_discover_games_empty_directory(self, discovery_service, tmp_path):
         """Test discovery with empty directory."""
         empty_dir = tmp_path / "empty"

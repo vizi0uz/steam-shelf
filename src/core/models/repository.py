@@ -62,11 +62,11 @@ class NonSteamGameRepository:
             self.load_games_from_vdf(self.shortcuts_vdf_path)
         else:
             print("No shortcuts.vdf file found, defaulting to empty repo")
-        games_already_added = {game.AppName for game in self.games}
         self.discovery_service = discovery_service or GameDiscoveryService(
-            SteamDatabase(), 
+            SteamDatabase(),
             self.validator,
-            added_games=games_already_added
+            added_games={game.AppName for game in self.games},
+            added_executables={game.Exe for game in self.games},
         )
         
     
