@@ -110,6 +110,30 @@ class GamesDisplayFrame:
             on_error=on_scan_error
         )
 
+    def _empty_scan_explanation(self) -> str:
+        """Say which step rejected the folders, with the counts.
+
+        The old message always blamed missing executables, which is what made
+        the real cause -- folders discarded before their executables were ever
+        looked at -- impossible to diagnose from the UI.
+        """
+        stats = getattr(self.steam_repo.discovery_service, 'last_scan_stats', None)
+        if stats is None:
+            return "No games found in the selected directory."
+
+        if stats.directories_seen == 0:
+            return (
+                "That folder has no subfolders.\n"
+                "Pick the folder that contains your games, not a single game's folder."
+            )
+
+        lines = [f"Scanned {stats.directories_seen} folders, none usable:"]
+        if stats.without_executables:
+            lines.append(f"  - {stats.without_executables} contained no .exe file")
+        if stats.directories_skipped:
+            lines.append(f"  - {stats.directories_skipped} were already added or skipped")
+        return "\n".join(lines)
+
     def show_found_games_progressive(self, directory):
         """Display the found games with progressive loading to keep UI responsive."""
         # Remove existing games display frame if it exists
@@ -129,7 +153,7 @@ class GamesDisplayFrame:
         
         if not self.found_games:
             no_games_label = tk.Label(self.games_display_frame, 
-                                     text="No executable files found in the selected directory.",
+                                     text=self._empty_scan_explanation(),
                                      font=("Arial", 10),
                                      bg='#2a2a2a', fg='gray')
             no_games_label.pack(pady=20)

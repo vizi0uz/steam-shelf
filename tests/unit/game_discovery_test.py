@@ -107,8 +107,9 @@ class TestGameDiscoveryService:
         """Test successful game discovery."""
         candidates = discovery_service.discover_games_from_directory(test_game_structure)
         
-        # Should find Test Game and Another Game
-        assert len(candidates) == 2
+        # Test Game, Another Game and Unknown Game -- the last one is kept
+        # unconfirmed rather than dropped.
+        assert len(candidates) == 3
         
         # Verify the candidates
         candidate_names = [c.name for c in candidates]
@@ -140,16 +141,31 @@ class TestGameDiscoveryService:
         assert progress_calls[-1] == ("Game discovery complete", 1.0)
         
         # Should still find games
-        assert len(candidates) == 2
+        assert len(candidates) == 3
     
-    def test_discover_games_skips_unknown(self, discovery_service, test_game_structure):
-        """Test that discovery skips games not in Steam database."""
+    def test_discover_games_keeps_unknown_unconfirmed(self, discovery_service, test_game_structure):
+        """A game missing from the Steam database is kept, not dropped.
+
+        Dropping it is what made the scan come back empty and the UI report
+        missing executables for folders whose executables were never sought.
+        """
         candidates = discovery_service.discover_games_from_directory(test_game_structure)
-        
-        # Should not find "Unknown Game" as it's not in the database
-        candidate_names = [c.name for c in candidates]
-        assert "Unknown Game" not in candidate_names
-    
+
+        unknown = next(c for c in candidates if c.name == "Unknown Game")
+        assert unknown.steam_id is None
+        assert unknown.confirmed is False
+        assert unknown.exe_path.exists()
+
+    def test_discovery_stats_count_each_rejection_reason(self, discovery_service, test_game_structure):
+        """The counts are what lets the UI name the step that rejected a folder."""
+        discovery_service.discover_games_from_directory(test_game_structure)
+        stats = discovery_service.last_scan_stats
+
+        assert stats.candidates == 3
+        assert stats.without_steam_match == 1
+        assert stats.without_executables >= 1
+        assert stats.directories_seen == stats.candidates + stats.directories_skipped             + stats.without_executables
+
     def test_discover_games_skips_blacklisted_dirs(self, discovery_service, test_game_structure):
         """Test that discovery skips blacklisted directories."""
         candidates = discovery_service.discover_games_from_directory(test_game_structure)
@@ -173,9 +189,9 @@ class TestGameDiscoveryService:
         
         candidates = service.discover_games_from_directory(test_game_structure)
         
-        # Should only find "Another Game", not "Test Game"
-        assert len(candidates) == 1
-        assert candidates[0].name == "Another Game"
+        # "Test Game" is skipped as already added; the other two remain.
+        assert len(candidates) == 2
+        assert "Test Game" not in [c.name for c in candidates]
     
     def test_discover_games_empty_directory(self, discovery_service, tmp_path):
         """Test discovery with empty directory."""
@@ -288,14 +304,18 @@ class TestPrivateMethods:
         assert candidate is None
     
     def test_process_directory_not_in_database(self, discovery_service, tmp_path):
-        """Test processing directory for game not in database."""
+        """A directory the database does not know still yields a candidate."""
         unknown_dir = tmp_path / "Unknown Game"
         unknown_dir.mkdir()
         (unknown_dir / "unknown.exe").write_text("unknown game")
-        
+
         candidate = discovery_service._process_directory(unknown_dir)
-        assert candidate is None
-    
+
+        assert candidate is not None
+        assert candidate.steam_id is None
+        assert candidate.confirmed is False
+        assert candidate.name == "Unknown Game"
+
     def test_process_directory_no_valid_executables(self, discovery_service, tmp_path):
         """Test processing directory with no valid executables."""
         game_dir = tmp_path / "Test Game"  # In database

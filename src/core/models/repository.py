@@ -123,7 +123,13 @@ class NonSteamGameRepository:
         # Use candidates to get Steam IDs for image downloading
         total_games = len(self.game_candidates)
         for i, candidate in enumerate(self.game_candidates):
-            # All candidates should have Steam IDs since discovery requires them
+            # Discovery no longer requires a Steam ID, so a candidate can
+            # arrive without one. Asking the CDN for artwork under a null
+            # id raises on the 404 and aborts the whole batch.
+            if candidate.steam_id is None:
+                print(f"No Steam ID for {candidate.name}; skipping artwork")
+                continue
+
             print(f"Downloading images for {candidate.name} (Steam ID: {candidate.steam_id}, Shortcut ID: {candidate.shortcut_id})")
             
             # Create per-game progress callback if main callback exists
